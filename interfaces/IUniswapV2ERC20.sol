@@ -4,6 +4,7 @@ interface IUniswapV2ERC20 {
     event Approval(address indexed owner, address indexed spender, uint value);
     event Transfer(address indexed from, address indexed to, uint value);
 
+    //pure修饰在实现类就是常量 string public constant name = 'Uniswap V2';
     function name() external pure returns (string memory);
     function symbol() external pure returns (string memory);
     function decimals() external pure returns (uint8);

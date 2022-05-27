@@ -13,9 +13,11 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
     mapping(address => uint) public balanceOf;
     mapping(address => mapping(address => uint)) public allowance;
 
+    // EIP712所规定的DOMAIN_SEPARATOR值，会在构造函数中进行赋值
     bytes32 public DOMAIN_SEPARATOR;
-    // keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+    // EIP712所规定的TYPEHASH，这里直接硬编码的keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)")
     bytes32 public constant PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
+    //返回EIP2612所规定每次授权的信息中所携带的nonce值是多少，防止授权过程遭受到重入攻击
     mapping(address => uint) public nonces;
 
     event Approval(address indexed owner, address indexed spender, uint value);
@@ -26,10 +28,13 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
         assembly {
             chainId := chainid
         }
+
+        //EIP-712确定了编码数据及其结构，在前端（线下）在用户签名时显示 进行验证
+        //而不是一串难以理解的hex串 允许它。
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
                 keccak256('EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)'),
-                keccak256(bytes(name)),
+                keccak256(bytes(name)),//代币名称
                 keccak256(bytes('1')),
                 chainId,
                 address(this)
@@ -78,8 +83,11 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
         return true;
     }
 
+    //这个方法就是EIP2612进行授权交易的方法
+    //可以用这个方法实现无gas(token的使用者不需要出gas)的token交易
     function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external {
         require(deadline >= block.timestamp, 'UniswapV2: EXPIRED');
+        // 构建签名
         bytes32 digest = keccak256(
             abi.encodePacked(
                 '\x19\x01',
@@ -87,6 +95,8 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
                 keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, nonces[owner]++, deadline))
             )
         );
+
+        // 验证签名并获取签名信息的地址
         address recoveredAddress = ecrecover(digest, v, r, s);
         require(recoveredAddress != address(0) && recoveredAddress == owner, 'UniswapV2: INVALID_SIGNATURE');
         _approve(owner, spender, value);

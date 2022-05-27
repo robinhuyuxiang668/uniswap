@@ -6,20 +6,18 @@ import 'openzeppelin-solidity-2.3.0/contracts/ownership/Ownable.sol';
 import './StakingRewards.sol';
 
 contract StakingRewardsFactory is Ownable {
-    // immutables
-    address public  rewardsToken;
-    uint public  stakingRewardsGenesis;
-
-    // the staking tokens for which the rewards contract has been deployed
-    address[] public stakingTokens;
-
-    // info about rewards for a particular staking token
+   
+    address public immutable rewardsToken;//用作奖励的代币，其实就是 UNI 代币
+    uint public immutable stakingRewardsGenesis;//质押挖矿开始的时间
+    
+    address[] public stakingTokens;//用来质押的代币数组，一般就是各交易对的 LPToken
+    
     struct StakingRewardsInfo {
-        address stakingRewards;
-        uint rewardAmount;
+        address stakingRewards;//质押合约地址
+        uint rewardAmount;//质押合约每周期的奖励总量
     }
 
-    // rewards info by staking token
+    // 保存质押代币LP 和质押合约信息之间的映射
     mapping(address => StakingRewardsInfo) public stakingRewardsInfoByStakingToken;
 
     constructor(
@@ -31,11 +29,8 @@ contract StakingRewardsFactory is Ownable {
         rewardsToken = _rewardsToken;
         stakingRewardsGenesis = _stakingRewardsGenesis;
     }
-
-    ///// permissioned functions
-
-    // deploy a staking reward contract for the staking token, and store the reward amount
-    // the reward will be distributed to the staking reward contract no sooner than the genesis
+ 
+     // 部署质押奖励合约  stakingToken：Lp代币
     function deploy(address stakingToken, uint rewardAmount) public onlyOwner {
         StakingRewardsInfo storage info = stakingRewardsInfoByStakingToken[stakingToken];
         require(info.stakingRewards == address(0), 'StakingRewardsFactory::deploy: already deployed');
@@ -45,9 +40,7 @@ contract StakingRewardsFactory is Ownable {
         stakingTokens.push(stakingToken);
     }
 
-    ///// permissionless functions
 
-    // call notifyRewardAmount for all staking tokens.
     function notifyRewardAmounts() public {
         require(stakingTokens.length > 0, 'StakingRewardsFactory::notifyRewardAmounts: called before any deploys');
         for (uint i = 0; i < stakingTokens.length; i++) {
@@ -55,16 +48,19 @@ contract StakingRewardsFactory is Ownable {
         }
     }
 
-    // notify reward amount for an individual staking token.
-    // this is a fallback in case the notifyRewardAmounts costs too much gas to call for all contracts
+    //挖矿奖励的代币UNI 转入到质押合约中开始挖矿（前提是需要先将UNI 先转入该工厂合约）
     function notifyRewardAmount(address stakingToken) public {
+        //当前区块的时间需大于等于质押挖矿的开始时间
         require(block.timestamp >= stakingRewardsGenesis, 'StakingRewardsFactory::notifyRewardAmount: not ready');
 
         StakingRewardsInfo storage info = stakingRewardsInfoByStakingToken[stakingToken];
+        //要求 质押合约地址不能为零地址，否则说明还没部署。
         require(info.stakingRewards != address(0), 'StakingRewardsFactory::notifyRewardAmount: not deployed');
 
         if (info.rewardAmount > 0) {
             uint rewardAmount = info.rewardAmount;
+            //这里先在转账前置0而不是放在转账后 ,因为如果有两个几乎同时调用该方法
+            //会向质押合约重复发奖励代币
             info.rewardAmount = 0;
 
             require(
